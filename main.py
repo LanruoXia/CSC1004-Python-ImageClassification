@@ -1,6 +1,6 @@
 from __future__ import print_function
 import argparse
-
+import torch.multiprocessing as mp
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -38,7 +38,7 @@ class Net(nn.Module):
         return output
 
 
-def train(args, model, device, train_loader, optimizer, epoch):
+def train(args, model, device, train_loader, optimizer, epoch, seed):
     """
     tain the model and return the training accuracy
     :param args: input arguments
@@ -49,7 +49,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     :param epoch: current epoch
     :return:
     """
-    file_train = open('files/training_record.txt', 'w')
+    # file_train = open('files/training_record.txt', 'w')
     model.train()
     accuracies = []  # append accuracy value of each batch
     losses = []  # append loss value of each batch
@@ -58,7 +58,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        # TODO problem: for F.nll_loss, 0D or 1D target tensor expected, multi-target not supported?
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
@@ -69,16 +68,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
             # print(output[k],target[k])
             if torch.argmax(output[k], -1).item() == target[k].item():  # check if yhat corresponds to y
                 correct_count += 1
-        batch_accuracy = correct_count / train_loader.batch_size
+        batch_accuracy = correct_count / output.shape[0]
         accuracies.append(batch_accuracy)
         losses.append(loss.item())
-        # record loss and accuracy of each batch in this epoch
-        # file_train = open('files/training_record.txt', 'a')
-        # file_train.write(f'batch {batch_idx + 1}/{len(train_loader)}: ' + "Loss: " + str(loss.item())
-        #                  + "Accuracy: " + str(batch_accuracy) + "\n")
-        print(f'batch {batch_idx + 1}/{len(train_loader)}: ' + "Loss: " + str(loss.item())
+        print(f'Seed {seed} Epoch {epoch} batch {batch_idx + 1}/{len(train_loader)}: ' + "Loss: " + str(loss.item())
               + " Accuracy: " + str(batch_accuracy) + "\n")
-        # file_train.close()
 
     # training_acc, training_loss = None, None  # replace this line
     # calculating average accuracy and loss of all batches in each epoch
@@ -111,7 +105,6 @@ def test(model, device, test_loader):
 
             # pass
     testing_acc = correct/(len(test_loader)*test_loader.batch_size)
-    # TODO way to calculate training loss?
     testing_loss = test_loss/(len(test_loader)*test_loader.batch_size)
     print(testing_loss)
     return testing_acc, testing_loss
@@ -133,11 +126,12 @@ def plot(epoches, performance, type):
     # pass
 
 
-def run(config):
+def run(config, seed):
+
     use_cuda = not config.no_cuda and torch.cuda.is_available()
     use_mps = not config.no_mps and torch.backends.mps.is_available()
 
-    torch.manual_seed(config.seed)
+    torch.manual_seed(seed)
 
     if use_cuda:
         device = torch.device("cuda")
@@ -178,54 +172,59 @@ def run(config):
 
     scheduler = StepLR(optimizer, step_size=1, gamma=config.gamma)
     # for epoch in range(1, config.epochs + 1):
-    for epoch in range(1, 5):
-        train_acc, train_loss = train(config, model, device, train_loader, optimizer, epoch)
+    for epoch in range(1, 16):
+
+        train_acc, train_loss = train(config, model, device, train_loader, optimizer, epoch, seed)
         """record training info, Fill your code"""
         training_loss.append(train_loss)
         training_accuracies.append(train_acc)
-        file_train = open('files/training_record.txt', 'a')
-        file_train.write(f'Epoch {epoch}/{config.epochs}: ' + "Loss: " + str(train_loss)
-                         + "Accuracy: " + str(train_acc) + "\n")
-        print(f'Epoch {epoch}/{config.epochs}: ' + "Loss: " + str(train_loss)
-                         + "Accuracy: " + str(train_acc) + "\n")
-        file_train.close()
-
-        file_train_loss = open('files/training_loss_epoch.txt', 'a')
-        file_train_loss.write(str(train_loss) + "\n")
-        file_train_loss.close()
-
-        file_train_acc = open('files/training_acc_epoch.txt', 'a')
-        file_train_acc.write(str(train_acc) + "\n")
-        file_train_acc.close()
 
         test_acc, test_loss = test(model, device, test_loader)
         """record testing info, Fill your code"""
         testing_accuracies.append(test_acc)
         testing_loss.append(test_loss)
-
-        file_test_loss = open('files/testing_loss_epoch.txt', 'a')
-        file_test_loss.write(str(test_loss) + "\n")
-        file_test_loss.close()
-
-        file_test_acc = open('files/testing_acc_epoch.txt', 'a')
-        file_test_acc.write(str(test_acc) + "\n")
-        file_test_acc.close()
         epoches.append(epoch)
+        file_train_loss1 = open('files/training_loss.txt', 'a')
+        file_train_acc1 = open('files/training_acc.txt', 'a')
+        file_test_loss1 = open('files/testing_loss.txt', 'a')
+        file_test_acc1 = open('files/testing_acc.txt', 'a')
+        file_train_loss1.write(str(train_loss)+ "\n")
+        file_train_acc1.write(str(train_acc)+ "\n")
+        file_test_loss1.write(str(test_loss)+ "\n")
+        file_test_acc1.write(str(test_acc)+ "\n")
+        file_train_loss1.close()
+        file_train_acc1.close()
+        file_test_loss1.close()
+        file_test_acc1.close()
 
         scheduler.step()
         """update the records, Fill your code"""
+    file_train_loss = open('files/training_loss_epoch.txt', 'a')
+    file_train_acc = open('files/training_acc_epoch.txt', 'a')
+    file_test_loss = open('files/testing_loss_epoch.txt', 'a')
+    file_test_acc = open('files/testing_acc_epoch.txt', 'a')
+
+    for i in range(15):
+        file_train_loss.write(str(training_loss[i]) + "\n")
+        file_train_acc.write(str(training_accuracies[i]) + "\n")
+        file_test_loss.write(str(testing_loss[i]) + "\n")
+        file_test_acc.write(str(testing_accuracies[i]) + "\n")
+
+    file_train_loss.close()
+    file_train_acc.close()
+    file_test_loss.close()
+    file_test_acc.close()
 
     """plotting training performance with the records"""
-    plot(epoches, training_accuracies, "training_accuracies")
-    plot(epoches, training_loss, "training_loss")
+    plot(epoches, training_accuracies, "training_accuracies seed: " + str(seed))
+    plot(epoches, training_loss, "training_loss seed: " + str(seed))
 
     """plotting testing performance with the records"""
-    plot(epoches, testing_accuracies, "testing_accuracies")
-    plot(epoches, testing_loss, "testing_loss")
+    plot(epoches, testing_accuracies, "testing_accuracies seed: " + str(seed))
+    plot(epoches, testing_loss, "testing_loss seed: " + str(seed) )
 
     if config.save_model:
         torch.save(model.state_dict(), "mnist_cnn.pt")
-
 
 def plot_mean():
     """
@@ -234,17 +233,63 @@ def plot_mean():
     :return:
     """
     """fill your code"""
-    pass
+    mean_training_loss = []
+    mean_training_accuracies = []
+    mean_testing_loss = []
+    mean_testing_accuracies = []
+    epoches = list(range(1, 16))
+
+    file1= open("files/training_loss_epoch.txt", "r")
+    line = file1.readlines()
+    for i in range(15):
+        mean_training_loss.append((float(line[i].strip()) + float(line[i+15].strip()) + float(line[i+30].strip()))/3)
+
+    file2 = open("files/training_acc_epoch.txt", "r")
+    line = file2.readlines()
+    for i in range(15):
+        mean_training_accuracies.append((float(line[i].strip()) + float(line[i+15].strip()) + float(line[i+30].strip()))/3)
+
+    file3 = open("files/testing_loss_epoch.txt", "r")
+    line = file3.readlines()
+    for i in range(15):
+        mean_testing_loss.append((float(line[i].strip()) + float(line[i+15].strip()) + float(line[i+30].strip()))/3)
+
+    file4 = open("files/testing_acc_epoch.txt", "r")
+    line = file4.readlines()
+    for i in range(15):
+        mean_testing_accuracies.append((float(line[i].strip()) + float(line[i+15].strip()) + float(line[i+30].strip()))/3)
+    plot(epoches, mean_training_loss, "Mean training loss")
+    plot(epoches, mean_training_accuracies, "Mean training accuracies")
+    plot(epoches, mean_testing_loss, "Mean testing loss")
+    plot(epoches, mean_testing_accuracies, "Mean testing accuracies")
 
 
 if __name__ == '__main__':
+    file_train_loss1 = open('files/training_loss.txt', 'w').close()
+    file_train_acc1 = open('files/training_acc.txt', 'w').close()
+    file_test_loss1 = open('files/testing_loss.txt', 'w').close()
+    file_test_acc1 = open('files/testing_acc.txt', 'w').close()
+    file_train_loss = open('files/training_loss_epoch.txt', 'w').close()
+    file_train_acc = open('files/training_acc_epoch.txt', 'w').close()
+    file_test_loss = open('files/testing_loss_epoch.txt', 'w').close()
+    file_test_acc = open('files/testing_acc_epoch.txt', 'w').close()
     arg = read_args()
 
     """toad training settings"""
     config = load_config(arg)
 
     """train model and record results"""
-    run(config)
+    p1 = mp.Process(target=run, args=(config, 123))
+    p2 = mp.Process(target=run, args=(config, 321))
+    p3 = mp.Process(target=run, args=(config, 666))
+
+    p1.start()
+    p2.start()
+    p3.start()
+
+    p1.join()
+    p2.join()
+    p3.join()
 
     """plot the mean results"""
-    # plot_mean()
+    plot_mean()
